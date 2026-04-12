@@ -75,8 +75,7 @@ fn redraw(stdout: &mut impl Write, buffer: &GapBuffer) {
 
 fn main() {
     let args = Cli::parse();
-    let content =
-        std::fs::read_to_string(&args.file).expect("Unable to read file or file does not exist.");
+    let content = std::fs::read_to_string(&args.file).unwrap_or_default();
     print!("\x1B[2J\x1B[1;1H");
 
     let mut buffer = GapBuffer::new(content.len() + 1024);
