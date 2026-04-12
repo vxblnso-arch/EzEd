@@ -6,7 +6,7 @@ use crossterm::{
     execute,
     terminal::{Clear, ClearType},
 };
-use std::fs;
+use std::fs::File;
 use std::io::{self, Read, Write, stdout};
 
 #[derive(Parser)]
@@ -22,7 +22,7 @@ struct GapBuffer {
 impl GapBuffer {
     fn new(capacity: usize) -> Self {
         Self {
-            buf: vec![' '; capacity], // Initialize with empty space
+            buf: vec!['\0'; capacity],
             gap_start: 0,
             gap_end: capacity,
         }
@@ -47,7 +47,30 @@ impl GapBuffer {
             self.gap_start += 1;
         }
     }
-    pub fn delete(&mut self) {}
+    pub fn delete(&mut self) {
+        if self.gap_start > 0 {
+            self.gap_start -= 1;
+        }
+    }
+}
+
+fn redraw(stdout: &mut impl Write, buffer: &GapBuffer) {
+    let before: String = buffer.buf[..buffer.gap_start].iter().collect();
+    let after: String = buffer.buf[buffer.gap_end..]
+        .iter()
+        .filter(|&&c| c != '\0')
+        .collect();
+
+    let row = before.chars().filter(|&c| c == '\n').count() as u16;
+    let column = before.chars().rev().take_while(|&c| c != '\n').count() as u16;
+
+    execute!(stdout, crossterm::cursor::MoveTo(0, 0)).unwrap();
+    execute!(stdout, Clear(ClearType::All)).unwrap();
+
+    write!(stdout, "{}{}", before, after).unwrap();
+
+    execute!(stdout, crossterm::cursor::MoveTo(column, row)).unwrap();
+    stdout.flush().unwrap();
 }
 
 fn main() {
@@ -55,44 +78,57 @@ fn main() {
     let content =
         std::fs::read_to_string(&args.file).expect("Unable to read file or file does not exist.");
     print!("\x1B[2J\x1B[1;1H");
-    print!("{content}");
 
     let mut buffer = GapBuffer::new(content.len() + 1024);
     for c in content.chars() {
         buffer.insert(c);
     }
 
+    let mut file = File::create(&args.file).expect("Could not create file");
     crossterm::terminal::enable_raw_mode().unwrap();
-    GapBuffer::new(1024);
     let mut stdout = stdout();
+    redraw(&mut stdout, &buffer);
+    execute!(stdout, crossterm::cursor::MoveTo(0, 0)).unwrap();
+    io::stdout().flush().unwrap();
     loop {
         match crossterm::event::read().unwrap() {
             Event::Key(key_event) => match key_event.code {
                 KeyCode::Char(c) => {
                     buffer.insert(c);
-                    stdout.execute(crossterm::cursor::MoveRight(1)).unwrap();
+                    redraw(&mut stdout, &buffer);
                 }
                 KeyCode::Backspace => {
-                    // Call a GapBuffer::delete()
-                    stdout.execute(crossterm::cursor::MoveLeft(1)).unwrap();
-                    execute!(stdout, Clear(ClearType::UntilNewLine)).unwrap();
-                    todo!();
+                    buffer.delete();
+                    redraw(&mut stdout, &buffer);
                 }
                 KeyCode::Left => {
                     buffer.back();
-                    stdout.execute(crossterm::cursor::MoveLeft(1)).unwrap();
+                    redraw(&mut stdout, &buffer);
                 }
                 KeyCode::Enter => {
                     buffer.insert('\n');
-                    stdout.execute(crossterm::cursor::MoveRight(1)).unwrap();
+                    redraw(&mut stdout, &buffer);
                 }
                 KeyCode::Right => {
                     buffer.forward();
-                    stdout.execute(crossterm::cursor::MoveRight(1)).unwrap();
+                    redraw(&mut stdout, &buffer);
+                }
+                KeyCode::Esc => {
+                    let part1: String = buffer.buf[..buffer.gap_start].iter().collect();
+                    let part2: String = buffer.buf[buffer.gap_end..].iter().collect();
+
+                    file.write_all(part1.as_bytes())
+                        .expect("could not write to file");
+                    file.write_all(part2.as_bytes())
+                        .expect("Could not write to file");
+
+                    file.flush().expect("Could not sync file");
+                    break;
                 }
                 _ => continue,
             },
             _ => continue,
         }
     }
+    crossterm::terminal::disable_raw_mode().unwrap();
 }
