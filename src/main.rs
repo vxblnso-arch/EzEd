@@ -1,9 +1,8 @@
 use clap::Parser;
 use crossterm::{
     self,
-    event::Event,
-    event::KeyCode,
-    execute,
+    event::{Event, KeyCode},
+    execute, queue,
     terminal::{Clear, ClearType},
 };
 use rpassword::read_password;
@@ -57,14 +56,26 @@ impl GapBuffer {
 }
 
 fn redraw(stdout: &mut impl Write, buffer: &GapBuffer) {
-    let before: String = buffer.buf[..buffer.gap_start].iter().collect();
+    let before: String = buffer.buf[..buffer.gap_start]
+        .iter()
+        .collect::<String>()
+        .replace("\n", "\r\n");
+
     let after: String = buffer.buf[buffer.gap_end..]
         .iter()
         .filter(|&&c| c != '\0')
-        .collect();
+        .collect::<String>()
+        .replace("\n", "\r\n");
 
     let row = before.chars().filter(|&c| c == '\n').count() as u16;
-    let column = before.chars().rev().take_while(|&c| c != '\n').count() as u16;
+    let postl_return = match before.rfind('\n') {
+        Some(i) => &before[i + 1..],
+        None => &before,
+    };
+    let column = postl_return.chars().fold(0u16, |col, c| match c {
+        '\t' => (col / 8 + 1) * 8,
+        _ => col + 1,
+    });
 
     execute!(stdout, crossterm::cursor::MoveTo(0, 0)).unwrap();
     execute!(stdout, Clear(ClearType::All)).unwrap();
@@ -115,17 +126,21 @@ fn main() {
                     buffer.forward();
                     redraw(&mut stdout, &buffer);
                 }
+                KeyCode::Tab => {
+                    buffer.insert('\t');
+                    redraw(&mut stdout, &buffer);
+                }
                 KeyCode::Esc => {
                     crossterm::terminal::disable_raw_mode().unwrap();
 
                     print!("\x1B[2J\x1B[1;1H");
                     println!(
-                        "                            ________________________
+                        "                            ________________________ 
                             |                       |
                             |     Save Changes?     |
                             |   [Y]es      (N)o     |
                             |                       |
-                            |_______________________|"
+                            |_______________________|" // Absolutely insane that THAT looks correct in the terminal.
                     );
 
                     let question = read_password().unwrap();
