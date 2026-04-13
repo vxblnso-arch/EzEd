@@ -1,13 +1,15 @@
 use clap::Parser;
 use crossterm::{
-    self, ExecutableCommand,
+    self,
     event::Event,
     event::KeyCode,
     execute,
     terminal::{Clear, ClearType},
 };
+use rpassword::read_password;
 use std::fs::File;
-use std::io::{self, Read, Write, stdout};
+use std::io::{self, Write, stdout};
+use std::path::Path;
 
 #[derive(Parser)]
 struct Cli {
@@ -83,6 +85,7 @@ fn main() {
         buffer.insert(c);
     }
 
+    let file_existed = Path::new(&args.file).exists();
     let mut file = File::create(&args.file).expect("Could not create file");
     crossterm::terminal::enable_raw_mode().unwrap();
     let mut stdout = stdout();
@@ -113,21 +116,44 @@ fn main() {
                     redraw(&mut stdout, &buffer);
                 }
                 KeyCode::Esc => {
-                    let part1: String = buffer.buf[..buffer.gap_start].iter().collect();
-                    let part2: String = buffer.buf[buffer.gap_end..].iter().collect();
+                    crossterm::terminal::disable_raw_mode().unwrap();
 
-                    file.write_all(part1.as_bytes())
-                        .expect("could not write to file");
-                    file.write_all(part2.as_bytes())
-                        .expect("Could not write to file");
+                    print!("\x1B[2J\x1B[1;1H");
+                    println!(
+                        "                            ________________________
+                            |                       |
+                            |     Save Changes?     |
+                            |   [Y]es      (N)o     |
+                            |                       |
+                            |_______________________|"
+                    );
 
-                    file.flush().expect("Could not sync file");
-                    break;
+                    let question = read_password().unwrap();
+                    let answer = matches!(question.as_str(), "No" | "N" | "no");
+                    if !answer {
+                        let part1: String = buffer.buf[..buffer.gap_start].iter().collect();
+                        let part2: String = buffer.buf[buffer.gap_end..].iter().collect();
+
+                        file.write_all(part1.as_bytes())
+                            .expect("could not write to file");
+                        file.write_all(part2.as_bytes())
+                            .expect("Could not write to file");
+
+                        file.flush().expect("Could not sync file");
+                        break;
+                    } else {
+                        if !file_existed {
+                            std::fs::remove_file(&args.file)
+                                .expect("Something went wrong when deleting the file.");
+                        }
+                        file.write_all(content.as_bytes())
+                            .expect("Something weird happened.");
+                        break;
+                    }
                 }
                 _ => continue,
             },
             _ => continue,
         }
     }
-    crossterm::terminal::disable_raw_mode().unwrap();
 }
