@@ -80,13 +80,8 @@ impl GapBuffer {
         };
 
         loopn!(postl_return.chars().count() + 1, { self.back() });
-        loopn!(
-            post2
-                .chars()
-                .count()
-                .saturating_sub(postl_return.chars().count()),
-            { self.forward() }
-        )
+        let target = postl_return.chars().count().min(post2.chars().count());
+        loopn!(target, { self.forward() });
     }
 }
 
@@ -147,7 +142,7 @@ fn main() {
 " //I cant with this box bro
         );
         let question = read_password().unwrap();
-        let answer = !matches!(question.as_str(), "No" | "N" | "no");
+        let answer = !matches!(question.as_str(), "No" | "N" | "no" | "n");
 
         if !answer {
             process::exit(1);
@@ -207,7 +202,7 @@ fn main() {
 
                     let question = read_password().unwrap(); // Idk but it looks weird if
                     // I can see the 'yes' or 'no' input?
-                    let answer = matches!(question.as_str(), "No" | "N" | "no");
+                    let answer = matches!(question.as_str(), "No" | "N" | "no" | "n");
                     if !answer {
                         let part1: String = buffer.buf[..buffer.gap_start].iter().collect();
                         let part2: String = buffer.buf[buffer.gap_end..].iter().collect();
