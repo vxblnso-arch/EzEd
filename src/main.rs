@@ -83,6 +83,32 @@ impl GapBuffer {
         let target = postl_return.chars().count().min(post2.chars().count());
         loopn!(target, { self.forward() });
     }
+    pub fn down(&mut self) {
+        let after: String = self.buf[self.gap_end..]
+            .iter()
+            .filter(|&&c| c != '\0')
+            .collect();
+
+        let next_return = after.find('\n');
+        let pren_return = match after.find('\n') {
+            Some(i) => &after[..i + 1],
+            None => &after,
+        };
+        let next2 = match next_return {
+            Some(i) => {
+                let post = &after[i + 1..];
+
+                match post.find('\n') {
+                    Some(i2) => &post[..i2],
+                    None => post,
+                }
+            }
+            None => "",
+        };
+        loopn!(pren_return.chars().count() + 1, { self.forward() });
+        let target = pren_return.chars().count().min(next2.chars().count());
+        loopn!(target, { self.back() })
+    }
 }
 
 fn redraw(stdout: &mut impl Write, buffer: &GapBuffer) {
@@ -181,6 +207,10 @@ fn main() {
                 }
                 KeyCode::Up => {
                     buffer.up();
+                    redraw(&mut stdout, &buffer);
+                }
+                KeyCode::Down => {
+                    buffer.down();
                     redraw(&mut stdout, &buffer);
                 }
                 KeyCode::Tab => {
