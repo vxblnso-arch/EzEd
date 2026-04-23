@@ -146,7 +146,7 @@ fn main() {
     let content = std::fs::read_to_string(&args.file).unwrap_or_default();
     print!("\x1B[2J\x1B[1;1H");
 
-    let mut buffer = GapBuffer::new(content.len() + 10240); // I think i can
+    let mut buffer = GapBuffer::new(content.len() + 1048576); // I think i can
     // just make this number huge and not deal with resize logic /s
     for c in content.chars() {
         buffer.insert(c);
@@ -204,6 +204,7 @@ fn main() {
                     redraw(&mut stdout, &buffer);
                 }
                 KeyCode::Up => {
+                    eprintln!("Up pressed\r");
                     buffer.up();
                     redraw(&mut stdout, &buffer);
                 }
