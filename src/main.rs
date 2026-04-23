@@ -78,10 +78,9 @@ impl GapBuffer {
             },
             None => "",
         };
-
-        loopn!(postl_return.chars().count() + 1, { self.back() });
-        let target = postl_return.chars().count().min(post2.chars().count());
-        loopn!(target, { self.forward() });
+        // wtf somehow this works
+        // Don't ask me why though
+        loopn!(post2.chars().count() + 1, { self.back() });
     }
     pub fn down(&mut self) {
         let after: String = self.buf[self.gap_end..]
@@ -105,9 +104,8 @@ impl GapBuffer {
             }
             None => "",
         };
-        loopn!(pren_return.chars().count() + 1, { self.forward() });
-        let target = pren_return.chars().count().min(next2.chars().count());
-        loopn!(target, { self.back() })
+        // Kinda goofy but it works so we ball
+        loopn!(next2.chars().count() + 1, { self.forward() })
     }
 }
 
