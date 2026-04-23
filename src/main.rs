@@ -110,16 +110,11 @@ impl GapBuffer {
 }
 
 fn redraw(stdout: &mut impl Write, buffer: &GapBuffer) {
-    let before: String = buffer.buf[..buffer.gap_start]
-        .iter()
-        .collect::<String>()
-        .replace("\n", "\r\n");
-
+    let before: String = buffer.buf[..buffer.gap_start].iter().collect::<String>();
     let after: String = buffer.buf[buffer.gap_end..]
         .iter()
         .filter(|&&c| c != '\0')
-        .collect::<String>()
-        .replace("\n", "\r\n");
+        .collect::<String>();
 
     let row = before.chars().filter(|&c| c == '\n').count() as u16;
     let postl_return = match before.rfind('\n') {
@@ -127,14 +122,17 @@ fn redraw(stdout: &mut impl Write, buffer: &GapBuffer) {
         None => &before,
     };
     let column = postl_return.chars().fold(0u16, |col, c| match c {
-        '\t' => (col / 8 + 1) * 8,
+        '\t' => (col / 4 + 1) * 4,
         _ => col + 1,
     });
+
+    let before_display = before.replace("\n", "\r\n");
+    let after_display = after.replace("\n", "\r\n");
 
     execute!(stdout, crossterm::cursor::MoveTo(0, 0)).unwrap();
     execute!(stdout, Clear(ClearType::All)).unwrap();
 
-    write!(stdout, "{}{}", before, after).unwrap();
+    write!(stdout, "{}{}", before_display, after_display).unwrap();
 
     execute!(stdout, crossterm::cursor::MoveTo(column, row)).unwrap();
     stdout.flush().unwrap();
@@ -183,10 +181,35 @@ fn main() {
     loop {
         match crossterm::event::read().unwrap() {
             Event::Key(key_event) => match key_event.code {
+                KeyCode::Char('(') => {
+                    buffer.insert('(');
+                    buffer.insert(')');
+                    buffer.back();
+                    redraw(&mut stdout, &buffer);
+                }
+                KeyCode::Char('{') => {
+                    buffer.insert('{');
+                    buffer.insert('}');
+                    buffer.back();
+                    redraw(&mut stdout, &buffer);
+                }
+                KeyCode::Char('[') => {
+                    buffer.insert('[');
+                    buffer.insert(']');
+                    buffer.back();
+                    redraw(&mut stdout, &buffer);
+                }
+                KeyCode::Char('"') => {
+                    buffer.insert('"');
+                    buffer.insert('"');
+                    buffer.back();
+                    redraw(&mut stdout, &buffer);
+                }
                 KeyCode::Char(c) => {
                     buffer.insert(c);
                     redraw(&mut stdout, &buffer);
                 }
+
                 KeyCode::Backspace => {
                     buffer.delete();
                     redraw(&mut stdout, &buffer);
