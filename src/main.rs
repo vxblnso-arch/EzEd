@@ -1,15 +1,7 @@
 use clap::Parser;
-use crossterm::{
-    self,
-    event::{Event, KeyCode},
-    execute,
-    terminal::{Clear, ClearType},
-};
-use rpassword::read_password;
-use std::fs::File;
-use std::io::{self, Write, stdout};
-use std::path::Path;
-use std::process;
+use crossterm::{ self, event::{Event, KeyCode}, execute, terminal::{Clear, ClearType}, };
+use rpassword::read_password; use std::fs::File; use std::io::{self, Write, stdout};
+use std::path::Path; use std::process;
 
 macro_rules! loopn {
     ($n:expr, $body:block) => {
@@ -138,6 +130,23 @@ fn redraw(stdout: &mut impl Write, buffer: &GapBuffer) {
     stdout.flush().unwrap();
 }
 
+#[derive(PartialEq)]
+enum EditingMinorMode {
+    Yank,
+    Delete,
+    Normal,
+}
+
+#[derive(PartialEq)]
+enum EditingMajorMode { // Sounds like i'm making an emacs clone now, The Better Editor.
+    // Sadly I will clone vi
+    Insert,
+    Normal(EditingMinorMode),
+    Visual, // This one's gonna be a pain to implement..
+}
+
+    
+
 fn main() {
     // Just Here to Keep it Looking Clean...
     let args = Cli::parse();
@@ -145,7 +154,7 @@ fn main() {
     print!("\x1B[2J\x1B[1;1H");
 
     let mut buffer = GapBuffer::new(content.len() + 1048576); // I think i can
-    // just make this number huge and not deal with resize logic /s
+    // just make this number huge and not deal with resize logic
     for c in content.chars() {
         buffer.insert(c);
     }
@@ -178,7 +187,27 @@ fn main() {
     execute!(stdout, crossterm::cursor::MoveTo(0, 0)).unwrap();
     io::stdout().flush().unwrap();
 
+    let mut main_mode = EditingMajorMode::Normal(EditingMinorMode::Normal);
+    
+    
     loop {
+
+        match main_mode {
+
+            EditingMajorMode::Normal(EditingMinorMode::Normal) => {
+                
+            }
+
+            EditingMajorMode::Insert => {
+                
+            }
+
+            EditingMajorMode::Visual => {
+                
+            }
+
+            _ =>  {}
+        }
         match crossterm::event::read().unwrap() {
             Event::Key(key_event) => match key_event.code {
                 KeyCode::Char('(') => {
@@ -197,6 +226,10 @@ fn main() {
                     buffer.insert('[');
                     buffer.insert(']');
                     buffer.back();
+                    redraw(&mut stdout, &buffer);
+                }
+                 KeyCode::Tab => {
+                    buffer.insert('\t');
                     redraw(&mut stdout, &buffer);
                 }
                 KeyCode::Char('"') => {
@@ -227,7 +260,6 @@ fn main() {
                     redraw(&mut stdout, &buffer);
                 }
                 KeyCode::Up => {
-                    eprintln!("Up pressed\r");
                     buffer.up();
                     redraw(&mut stdout, &buffer);
                 }
@@ -235,10 +267,7 @@ fn main() {
                     buffer.down();
                     redraw(&mut stdout, &buffer);
                 }
-                KeyCode::Tab => {
-                    buffer.insert('\t');
-                    redraw(&mut stdout, &buffer);
-                }
+               
                 KeyCode::Esc => {
                     crossterm::terminal::disable_raw_mode().unwrap();
 
@@ -263,7 +292,7 @@ fn main() {
                             .expect("could not write to file");
                         file.write_all(part2.as_bytes())
                             .expect("Could not write to file");
-
+                        
                         file.flush().expect("Could not sync file");
                         break;
                     } else {
