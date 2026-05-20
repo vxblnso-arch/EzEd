@@ -101,7 +101,7 @@ impl GapBuffer {
     }
 }
 
-fn redraw(stdout: &mut impl Write, buffer: &GapBuffer) {
+fn redraw(stdout: &mut impl Write, buffer: &GapBuffer, mode: &str) {
     let before: String = buffer.buf[..buffer.gap_start].iter().collect::<String>();
     let after: String = buffer.buf[buffer.gap_end..]
         .iter()
@@ -118,15 +118,16 @@ fn redraw(stdout: &mut impl Write, buffer: &GapBuffer) {
         _ => col + 1,
     });
 
+    let status_line = format!("-- {} --\r\n \r\n", mode);
     let before_display = before.replace("\n", "\r\n");
     let after_display = after.replace("\n", "\r\n");
 
     execute!(stdout, crossterm::cursor::MoveTo(0, 0)).unwrap();
     execute!(stdout, Clear(ClearType::All)).unwrap();
 
-    write!(stdout, "{}{}", before_display, after_display).unwrap();
+    write!(stdout, "{}{}{}", status_line, before_display, after_display).unwrap();
 
-    execute!(stdout, crossterm::cursor::MoveTo(column, row)).unwrap();
+    execute!(stdout, crossterm::cursor::MoveTo(column, row + 2)).unwrap();
     stdout.flush().unwrap();
 }
 
@@ -142,6 +143,7 @@ enum EditingMajorMode { // Sounds like i'm making an emacs clone now, The Better
     // Sadly I will clone vi
     Insert,
     Normal(EditingMinorMode),
+    Command,
     Visual, // This one's gonna be a pain to implement..
 }
 
@@ -153,9 +155,8 @@ fn main() {
     let content = std::fs::read_to_string(&args.file).unwrap_or_default();
     print!("\x1B[2J\x1B[1;1H");
 
-    let mut buffer = GapBuffer::new(content.len() + 1048576); // I think i can
-    // just make this number huge and not deal with resize logic
-    for c in content.chars() {
+    let mut buffer = GapBuffer::new(content.len() + 1048576);
+    	for c in content.chars() {
         buffer.insert(c);
     }
 
@@ -183,7 +184,7 @@ fn main() {
     let mut file = File::create(&args.file).expect("Could not create file");
     crossterm::terminal::enable_raw_mode().unwrap();
     let mut stdout = stdout();
-    redraw(&mut stdout, &buffer);
+    redraw(&mut stdout, &buffer, "NORMAL");
     execute!(stdout, crossterm::cursor::MoveTo(0, 0)).unwrap();
     io::stdout().flush().unwrap();
 
@@ -192,124 +193,188 @@ fn main() {
     
     loop {
 
+        let current_mode = match main_mode {
+            EditingMajorMode::Insert => "INSERT",
+            EditingMajorMode::Normal(_) => "NORMAL",
+            EditingMajorMode::Visual => "VISUAL",
+            EditingMajorMode::Command => "COMMAND",
+        };
+        
         match main_mode {
 
-            EditingMajorMode::Normal(EditingMinorMode::Normal) => {
-                
+            EditingMajorMode::Insert => {
+
+                match crossterm::event::read().unwrap() {
+                    Event::Key(key_event) => match key_event.code {
+
+                        KeyCode::Char('(') => {
+                            buffer.insert('(');
+                            buffer.insert(')');
+                            buffer.back();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Char('{') => {
+                            buffer.insert('{');
+                            buffer.insert('}');
+                            buffer.back();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Char('[') => {
+                            buffer.insert('[');
+                            buffer.insert(']');
+                            buffer.back();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Tab => {
+                            buffer.insert('\t');
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Char('"') => {
+                            buffer.insert('"');
+                            buffer.insert('"');
+                            buffer.back();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Char(c) => {
+                            buffer.insert(c);
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+
+                        KeyCode::Backspace => {
+                            buffer.delete();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Left => {
+                            buffer.back();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Enter => {
+                            buffer.insert('\n');
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Right => {
+                            buffer.forward();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Up => {
+                            buffer.up();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Down => {
+                            buffer.down();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Esc => {
+                            main_mode = EditingMajorMode::Normal(EditingMinorMode::Normal);
+                            buffer.forward();
+                            buffer.back();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+               
+                        _ => continue,
+                    },
+                    _ => continue,
+                }
             }
 
-            EditingMajorMode::Insert => {
-                
+            EditingMajorMode::Normal(EditingMinorMode::Normal) => {
+                crossterm::terminal::enable_raw_mode().unwrap();
+
+                match crossterm::event::read().unwrap() {
+
+                    Event::Key(key_event) => match key_event.code {
+                        KeyCode::Left => {
+                            buffer.back();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Right => {
+                            buffer.forward();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Up => {
+                            buffer.up();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Down => {
+                            buffer.down();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        KeyCode::Char('i') => {
+                            main_mode = EditingMajorMode::Insert;
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+
+                        KeyCode::Char(':') => {
+                            main_mode = EditingMajorMode::Command;
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                       
+
+                    },
+
+                    _ => continue,
+                }
             }
 
             EditingMajorMode::Visual => {
                 
             }
+            EditingMajorMode::Command => {
 
-            _ =>  {}
-        }
-        match crossterm::event::read().unwrap() {
-            Event::Key(key_event) => match key_event.code {
-                KeyCode::Char('(') => {
-                    buffer.insert('(');
-                    buffer.insert(')');
-                    buffer.back();
-                    redraw(&mut stdout, &buffer);
-                }
-                KeyCode::Char('{') => {
-                    buffer.insert('{');
-                    buffer.insert('}');
-                    buffer.back();
-                    redraw(&mut stdout, &buffer);
-                }
-                KeyCode::Char('[') => {
-                    buffer.insert('[');
-                    buffer.insert(']');
-                    buffer.back();
-                    redraw(&mut stdout, &buffer);
-                }
-                 KeyCode::Tab => {
-                    buffer.insert('\t');
-                    redraw(&mut stdout, &buffer);
-                }
-                KeyCode::Char('"') => {
-                    buffer.insert('"');
-                    buffer.insert('"');
-                    buffer.back();
-                    redraw(&mut stdout, &buffer);
-                }
-                KeyCode::Char(c) => {
-                    buffer.insert(c);
-                    redraw(&mut stdout, &buffer);
-                }
+                crossterm::terminal::disable_raw_mode().unwrap();
+                
+                match crossterm::event::read().unwrap() {
 
-                KeyCode::Backspace => {
-                    buffer.delete();
-                    redraw(&mut stdout, &buffer);
-                }
-                KeyCode::Left => {
-                    buffer.back();
-                    redraw(&mut stdout, &buffer);
-                }
-                KeyCode::Enter => {
-                    buffer.insert('\n');
-                    redraw(&mut stdout, &buffer);
-                }
-                KeyCode::Right => {
-                    buffer.forward();
-                    redraw(&mut stdout, &buffer);
-                }
-                KeyCode::Up => {
-                    buffer.up();
-                    redraw(&mut stdout, &buffer);
-                }
-                KeyCode::Down => {
-                    buffer.down();
-                    redraw(&mut stdout, &buffer);
-                }
-               
-                KeyCode::Esc => {
-                    crossterm::terminal::disable_raw_mode().unwrap();
 
-                    print!("\x1B[2J\x1B[1;1H");
-                    println!(
-                        "                            ________________________ 
+                    KeyCode::Char('q') => {
+
+                        crossterm::terminal::disable_raw_mode().unwrap();
+
+                        print!("\x1B[2J\x1B[1;1H");
+                        println!(
+                            "                            ________________________ 
                             |                       |
                             |     Save Changes?     |
                             |   [Y]es      (N)o     |
                             |                       |
-                            |_______________________|" // Absolutely insane that THAT looks correct in the terminal.
-                    );
+                            |_______________________|" 
+                        );
 
-                    let question = read_password().unwrap(); // Idk but it looks weird if
-                    // I can see the 'yes' or 'no' input?
-                    let answer = matches!(question.as_str(), "No" | "N" | "no" | "n");
-                    if !answer {
-                        let part1: String = buffer.buf[..buffer.gap_start].iter().collect();
-                        let part2: String = buffer.buf[buffer.gap_end..].iter().collect();
+                        let question = read_password().unwrap(); 
+                           
+                        let answer = matches!(question.as_str(), "No" | "N" | "no" | "n");
 
-                        file.write_all(part1.as_bytes())
-                            .expect("could not write to file");
-                        file.write_all(part2.as_bytes())
-                            .expect("Could not write to file");
-                        
-                        file.flush().expect("Could not sync file");
-                        break;
-                    } else {
-                        file.write_all(content.as_bytes())
-                            .expect("Something weird happened.");
+                        if !answer {
+                            let part1: String = buffer.buf[..buffer.gap_start].iter().collect();
+                            let part2: String = buffer.buf[buffer.gap_end..].iter().collect();
 
-                        if !file_existed {
-                            std::fs::remove_file(&args.file)
-                                .expect("Something went wrong when deleting the file.");
+                            file.write_all(part1.as_bytes())
+                                .expect("could not write to file");
+                            file.write_all(part2.as_bytes())
+                                .expect("Could not write to file");
+
+                            file.flush().expect("Could not sync file");
+                            break;
+
+                        } else {
+
+                            file.write_all(content.as_bytes())
+                                .expect("Something weird happened.");
+
+                            if !file_existed {
+                                std::fs::remove_file(&args.file)
+                                    .expect("Something went wrong when deleting the file.");
+                                break;
+                            }
                             break;
                         }
-                        break;
+                        
                     }
                 }
-                _ => continue,
-            },
-            _ => continue,
+            }
+
+            _ =>  {}
         }
+        
     }
 }
