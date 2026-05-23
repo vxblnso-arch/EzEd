@@ -1,7 +1,9 @@
 use clap::Parser;
 use crossterm::{ self, event::{Event, KeyCode}, execute, terminal::{Clear, ClearType}, };
-use rpassword::read_password; use std::fs::File; use std::io::{self, Write, stdout};
-use std::path::Path; use std::process;
+use rpassword::read_password; use std::fs::File;
+use std::io::{self, Write, stdout};
+use std::path::Path;
+use std::process;
 
 macro_rules! loopn {
     ($n:expr, $body:block) => {
@@ -58,7 +60,7 @@ impl GapBuffer {
         let before: String = self.buf[..self.gap_start].iter().collect();
         let last_newline = before.rfind('\n');
 
-        let postl_return = match before.rfind('\n') {
+        let _postl_return = match before.rfind('\n') {
             Some(i) => &before[i + 1..],
             None => &before,
         };
@@ -81,7 +83,7 @@ impl GapBuffer {
             .collect();
 
         let next_return = after.find('\n');
-        let pren_return = match after.find('\n') {
+        let _pren_return = match after.find('\n') {
             Some(i) => &after[..i + 1],
             None => &after,
         };
@@ -139,8 +141,7 @@ enum EditingMinorMode {
 }
 
 #[derive(PartialEq)]
-enum EditingMajorMode { // Sounds like i'm making an emacs clone now, The Better Editor.
-    // Sadly I will clone vi
+enum EditingMajorMode {
     Insert,
     Normal(EditingMinorMode),
     Command,
@@ -156,7 +157,7 @@ fn main() {
     print!("\x1B[2J\x1B[1;1H");
 
     let mut buffer = GapBuffer::new(content.len() + 1048576);
-    	for c in content.chars() {
+    for c in content.chars() {
         buffer.insert(c);
     }
 
@@ -189,8 +190,8 @@ fn main() {
     io::stdout().flush().unwrap();
 
     let mut main_mode = EditingMajorMode::Normal(EditingMinorMode::Normal);
-    
-    
+    let mut command: Vec<char> = Vec::new();
+
     loop {
 
         let current_mode = match main_mode {
@@ -204,6 +205,10 @@ fn main() {
 
             EditingMajorMode::Insert => {
 
+                redraw(&mut stdout, &buffer, current_mode);
+
+                crossterm::terminal::enable_raw_mode().unwrap();
+                
                 match crossterm::event::read().unwrap() {
                     Event::Key(key_event) => match key_event.code {
 
@@ -275,9 +280,12 @@ fn main() {
                     },
                     _ => continue,
                 }
-            }
+            },
 
-            EditingMajorMode::Normal(EditingMinorMode::Normal) => {
+            EditingMajorMode::Normal(_) => {
+
+                redraw(&mut stdout, &buffer, current_mode);
+                
                 crossterm::terminal::enable_raw_mode().unwrap();
 
                 match crossterm::event::read().unwrap() {
@@ -308,73 +316,111 @@ fn main() {
                             main_mode = EditingMajorMode::Command;
                             redraw(&mut stdout, &buffer, current_mode);
                         }
-                       
+
+                        _ => continue,
 
                     },
+                    
 
                     _ => continue,
                 }
-            }
+            },
 
             EditingMajorMode::Visual => {
                 
-            }
+            },
+        
             EditingMajorMode::Command => {
 
+                redraw(&mut stdout, &buffer, current_mode);
+                
                 crossterm::terminal::disable_raw_mode().unwrap();
                 
                 match crossterm::event::read().unwrap() {
 
+                    Event::Key(key_event) => match key_event.code {
+                        KeyCode::Char(c) => {
 
-                    KeyCode::Char('q') => {
+                            command.push(c);
 
-                        crossterm::terminal::disable_raw_mode().unwrap();
+                            redraw(&mut stdout, &buffer, current_mode);
 
-                        print!("\x1B[2J\x1B[1;1H");
-                        println!(
-                            "                            ________________________ 
+                        }
+
+                        KeyCode::Backspace => {
+                            command.pop();
+                            redraw(&mut stdout, &buffer, current_mode);
+                        }
+                        
+                        _ => continue,
+
+
+                    }
+                   
+	            _ => continue,
+
+                }
+
+            }
+            
+                    
+
+           
+        }
+
+
+        let command2 = command.iter().collect::<String>();
+
+                
+        match command2.as_str() {
+            "q" => {
+
+                crossterm::terminal::disable_raw_mode().unwrap();
+
+
+                print!("\x1B[2J\x1B[1;1H");
+                println!(
+                    "                            ________________________ 
                             |                       |
-                            |     Save Changes?     |
+                            |   Save Changes?       |
                             |   [Y]es      (N)o     |
                             |                       |
                             |_______________________|" 
-                        );
+                );
 
-                        let question = read_password().unwrap(); 
-                           
-                        let answer = matches!(question.as_str(), "No" | "N" | "no" | "n");
+                let question = read_password().unwrap(); 
+                            
+                let answer = matches!(question.as_str(), "No" | "N" | "no" | "n");
 
-                        if !answer {
-                            let part1: String = buffer.buf[..buffer.gap_start].iter().collect();
-                            let part2: String = buffer.buf[buffer.gap_end..].iter().collect();
+                if !answer {
+                    let part1: String = buffer.buf[..buffer.gap_start].iter().collect();
+                    let part2: String = buffer.buf[buffer.gap_end..].iter().collect();
 
-                            file.write_all(part1.as_bytes())
-                                .expect("could not write to file");
-                            file.write_all(part2.as_bytes())
-                                .expect("Could not write to file");
+                    file.write_all(part1.as_bytes())
+                        .expect("could not write to file");
+                    file.write_all(part2.as_bytes())
+                        .expect("Could not write to file");
 
-                            file.flush().expect("Could not sync file");
-                            break;
+                    file.flush().expect("Could not sync file");
+                    break;
 
-                        } else {
+                } else {
 
-                            file.write_all(content.as_bytes())
-                                .expect("Something weird happened.");
+                    file.write_all(content.as_bytes())
+                        .expect("Something weird happened.");
 
-                            if !file_existed {
-                                std::fs::remove_file(&args.file)
-                                    .expect("Something went wrong when deleting the file.");
-                                break;
-                            }
-                            break;
-                        }
-                        
+                    if !file_existed {
+                        std::fs::remove_file(&args.file)
+                            .expect("Something went wrong when deleting the file.");
+                        break;
                     }
+                    break;
                 }
-            }
-
-            _ =>  {}
+            },
+            _ => continue,
         }
-        
     }
 }
+
+
+
